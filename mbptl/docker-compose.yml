@@ -1,4 +1,5 @@
 services:
+  # Web + DB service (image bundles Apache + MySQL; 3306 bound to host loopback)
   main:
     build:
       context: mbptl-main
@@ -13,38 +14,77 @@ services:
     volumes:
       - db_data:/var/lib/mysql
     ports:
+      # Public web on host (override with WEB1_PORT/WEB2_PORT if you like)
       - "${WEB1_PORT:-80}:80"
       - "${WEB2_PORT:-8080}:8080"
+      # MySQL exposed only to host loopback (not to LAN/Internet)
       - "127.0.0.1:${DB_PORT:-3306}:3306"
     command: /start.sh
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "curl -fsS http://localhost/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
+  # Internal TCP service (31337); host loopback bind only
   internal:
     build:
       context: mbptl-internal
       dockerfile: Dockerfile
     image: bayufedra/mbptl-internal:latest
     container_name: mbptl-internal
-    ports:
-      - "127.0.0.1:${SERVICE_INTERNAL_PORT:-31337}:31337"
-    links:
-      - main
     depends_on:
       - main
+    ports:
+      - "127.0.0.1:${SERVICE_INTERNAL_PORT:-31337}:31337"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "timeout 1 bash -c '</dev/tcp/localhost/31337' || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
 
+  # Flask app (5000); host loopback bind only
   app:
     build:
       context: mbptl-app
       dockerfile: Dockerfile
     image: bayufedra/mbptl-app:latest
     container_name: mbptl-app
-    ports:
-      - "127.0.0.1:${WEB_INTERNAL_PORT:-5000}:5000"
-    links:
-      - main
     depends_on:
       - main
+    ports:
+      - "127.0.0.1:${WEB_INTERNAL_PORT:-5000}:5000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "curl -fsS http://localhost:5000/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Kali attacker box on the same Docker network
+  attacker-kali:
+    build:
+      context: ./attacker
+      dockerfile: Dockerfile
+    container_name: attacker-kali
+    hostname: MBPTL
+    depends_on:
+      - main
+      - app
+      - internal
+    # Capabilities + relaxed seccomp so nmap/netcat behave like bare metal
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - seccomp=unconfined
+    # Shared folder for notes, loot, outputs
+    volumes:
+      - ./loot:/loot
+    tty: true
+    stdin_open: true
     restart: unless-stopped
 
 volumes:
