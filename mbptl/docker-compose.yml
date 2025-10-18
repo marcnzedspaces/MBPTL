@@ -47,5 +47,25 @@ services:
       - main
     restart: unless-stopped
 
+  attacker-kali:
+    build:
+      context: mbptl-kali
+      dockerfile: Dockerfile
+    image: mbptl/attacker-kali:latest
+    container_name: attacker-kali
+    hostname: attacker-kali
+    stdin_open: true
+    tty: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    links:
+      - main
+      - internal
+      - app
+    depends_on:
+      - main
+    restart: unless-stopped
+
 volumes:
   db_data:

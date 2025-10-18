@@ -129,6 +129,27 @@ Once deployed, you should be able to access:
 - Internal Service: `tcp://127.0.0.1:31337/` (accessible after pivoting)
 - Web Internal service: `http://127.0.0.1:5000/` (accessible after pivoting)
 
+### Step 4: Access the Kali Attack Container (Optional)
+The lab includes a pre-configured Kali Linux container with all necessary tools installed:
+
+```bash
+# Access the Kali container
+docker exec -it attacker-kali bash
+```
+
+**Credentials:**
+- Username: `kali`
+- Password: `kali`
+
+The Kali container comes with:
+- All reconnaissance tools (nmap, curl, wget)
+- Exploitation tools (sqlmap, dirsearch)
+- Python3 with pwntools for binary exploitation
+- Pre-configured aliases and helpful scripts
+- Full network access to all lab targets
+
+See [mbptl/mbptl-kali/README.md](mbptl/mbptl-kali/README.md) for detailed documentation.
+
 ## 🏛️ Lab Structure
 
 The lab consists of three containers that simulate a real-world network environment:
@@ -154,6 +175,16 @@ The lab consists of three containers that simulate a real-world network environm
   - Flask web application with template injection vulnerability (Port 5000)
 - **Objective**: Pivoting target after compromising the main container
 - **Access**: Only accessible from within the main container's network
+
+### Attacker Container (`attacker-kali`) - Optional
+- **Purpose**: Pre-configured attack platform with all necessary tools
+- **Features**:
+  - All penetration testing tools pre-installed
+  - User credentials: kali/kali
+  - Network access to all lab targets
+  - Helpful aliases and scripts
+- **Benefits**: No need to install tools manually, ready to start testing immediately
+- **Access**: `docker exec -it attacker-kali bash`
 
 ### Learning Path
 1. **Reconnaissance** → Discover open ports and services
